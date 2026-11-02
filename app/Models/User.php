@@ -8,19 +8,25 @@ use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
     protected $fillable = [
-    'name',
-    'email',
-    'password',
-    'provider',
-    'provider_id',
-    'avatar',
+        'name',
+        'email',
+        'password',
+        'role',
+        'status',
+        'university_id',
+        'rejection_reason',
+        'provider',
+        'provider_id',
+        'avatar',
     ];
 
-    protected $hidden = ['password', 'remember_token'];
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
 
     protected function casts(): array
     {
@@ -28,5 +34,15 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function vehicles()
+    {
+        return $this->hasMany(Vehicle::class, 'provider_id');
+    }
+
+    public function bookings()
+    {
+        return $this->hasMany(Booking::class, 'customer_id');
     }
 }

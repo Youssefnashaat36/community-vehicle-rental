@@ -6,7 +6,19 @@ use Illuminate\Database\Eloquent\Model;
 
 class VehicleAvailability extends Model
 {
-    protected $fillable = ['vehicle_id','day_of_week','start_time','end_time'];
+    protected $fillable = [
+        'vehicle_id',
+        'day_of_week',
+        'start_time',
+        'end_time',
+    ];
 
-    //
+    protected $casts = [
+        'day_of_week' => 'integer',
+    ];
+
+    public function vehicle()
+    {
+        return $this->belongsTo(Vehicle::class);
+    }
 }
