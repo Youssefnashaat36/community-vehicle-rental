@@ -9,9 +9,10 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-// Vehicle routes
+//Vehicle routes
 Route::get('/vehicles', [VehicleController::class, 'index']);
 Route::get('/vehicles/{vehicle}', [VehicleController::class, 'show']);
+Route::post('/vehicles', [VehicleController::class, 'store']);
 
 // Booking routes
 Route::get('/bookings', [BookingController::class, 'index']);
