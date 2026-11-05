@@ -1,34 +1,68 @@
-const vehicles = [
-  {
-    id: 1,
-    name: 'Toyota Corolla',
-    type: 'car',
-    pricePerHour: 500,
-    pickupLocation: 'University Gate One',
-    description:
-      'Comfortable and reliable car for everyday trips.',
-  },
-  {
-    id: 2,
-    name: 'Electric Scooter',
-    type: 'scooter',
-    pricePerHour: 300,
-    pickupLocation: 'Engineering Faculty Parking',
-    description:
-      'Easy and affordable transportation around the campus.',
-  },
-  {
-    id: 3,
-    name: 'BMW',
-    type: 'car',
-    pricePerHour: 500,
-    pickupLocation: 'Dorms',
-    description:
-      'Premium driving experience for your journey.',
-  },
-]
 
-function VehicleListPage({ onSelectVehicle }) {
+import { useEffect, useState } from 'react'
+
+
+function VehicleListPage({ onSelectVehicle, onLogin, authUser }) {
+  const [vehicles, setVehicles] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [selectedType, setSelectedType] = useState('all')
+
+  useEffect(() => {
+    const fetchVehicles = async () => {
+      try {
+        setLoading(true)
+        setError('')
+
+        const response = await fetch(
+          'http://127.0.0.1:8000/api/vehicles'
+        )
+
+        if (!response.ok) {
+          throw new Error('Failed to load vehicles.')
+        }
+
+        const data = await response.json()
+        setVehicles(data)
+      } catch (err) {
+        setError(
+          'Could not connect to the server. Please try again.'
+        )
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchVehicles()
+  }, [])
+
+  const filteredVehicles = vehicles.filter((vehicle) => {
+    const matchesSearch =
+      vehicle.name.toLowerCase().includes(search.toLowerCase()) ||
+      vehicle.pickup_location.toLowerCase().includes(search.toLowerCase())
+
+    const matchesType =
+      selectedType === 'all' || vehicle.type === selectedType
+
+    return matchesSearch && matchesType
+  })
+
+  const getVehicleEmoji = (type) => {
+    switch (type) {
+      case 'car':
+        return '🚗'
+      case 'scooter':
+        return '🛴'
+      case 'motorbike':
+        return '🏍️'
+      case 'bicycle':
+        return '🚲'
+      default:
+        return '🚘'
+    }
+  }
+
   return (
     <div className="app-shell">
       <nav className="navbar">
@@ -43,13 +77,13 @@ function VehicleListPage({ onSelectVehicle }) {
           <a href="#bookings">My Bookings</a>
         </div>
 
-        <button className="login-button">
-          Login
-        </button>
+        <button className="login-button" onClick={onLogin}>
+  {authUser ? authUser.name : 'Login'}
+</button>
       </nav>
 
       <main>
-        <section className="hero-section">
+        <section className="hero-section" id="home">
           <div className="hero-badge">
             🚘 Community Vehicle Rental
           </div>
@@ -70,21 +104,27 @@ function VehicleListPage({ onSelectVehicle }) {
             <input
               type="text"
               placeholder="Search vehicles or pickup locations..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
             />
 
-            <button>
+            <button onClick={() => {
+              document.getElementById('vehicles')?.scrollIntoView({
+                behavior: 'smooth'
+              })
+            }}>
               Search
             </button>
           </div>
 
           <div className="hero-stats">
             <div>
-              <strong>50+</strong>
+              <strong>{vehicles.length}</strong>
               <span>Vehicles available</span>
             </div>
 
             <div>
-              <strong>20+</strong>
+              <strong>Community</strong>
               <span>Trusted providers</span>
             </div>
 
@@ -111,93 +151,130 @@ function VehicleListPage({ onSelectVehicle }) {
           </div>
 
           <div className="filter-tabs">
-            <button className="active">
+            <button
+              className={selectedType === 'all' ? 'active' : ''}
+              onClick={() => setSelectedType('all')}
+            >
               All
             </button>
 
-            <button>
+            <button
+              className={selectedType === 'car' ? 'active' : ''}
+              onClick={() => setSelectedType('car')}
+            >
               🚗 Cars
             </button>
 
-            <button>
+            <button
+              className={selectedType === 'scooter' ? 'active' : ''}
+              onClick={() => setSelectedType('scooter')}
+            >
               🛴 Scooters
+            </button>
+
+            <button
+              className={selectedType === 'motorbike' ? 'active' : ''}
+              onClick={() => setSelectedType('motorbike')}
+            >
+              🏍️ Motorbikes
+            </button>
+
+            <button
+              className={selectedType === 'bicycle' ? 'active' : ''}
+              onClick={() => setSelectedType('bicycle')}
+            >
+              🚲 Bicycles
             </button>
           </div>
 
-          <div className="vehicle-grid">
-            {vehicles.map((vehicle) => (
-              <article
-                className="vehicle-card"
-                key={vehicle.id}
-              >
-                <div
-                  className={`card-image ${vehicle.type}`}
+          {loading && (
+            <p className="loading-message">
+              Loading vehicles...
+            </p>
+          )}
+
+          {error && (
+            <p className="error-message">
+              {error}
+            </p>
+          )}
+
+          {!loading && !error && filteredVehicles.length === 0 && (
+            <p className="empty-message">
+              No vehicles found.
+            </p>
+          )}
+
+          {!loading && !error && (
+            <div className="vehicle-grid">
+              {filteredVehicles.map((vehicle) => (
+                <article
+                  className="vehicle-card"
+                  key={vehicle.id}
                 >
-                  <span className="vehicle-emoji">
-                    {vehicle.type === 'car'
-                      ? '🚗'
-                      : '🛴'}
-                  </span>
-                </div>
-
-                <div className="card-content">
-                  <div className="card-top">
-                    <span className="vehicle-type">
-                      {vehicle.type}
-                    </span>
-
-                    <span className="rating">
-                      ★ 4.8
-                    </span>
+                  <div className={`card-image ${vehicle.type}`}>
+                    {vehicle.image ? (
+                      <img
+                        src={vehicle.image}
+                        alt={vehicle.name}
+                      />
+                    ) : (
+                      <span className="vehicle-emoji">
+                        {getVehicleEmoji(vehicle.type)}
+                      </span>
+                    )}
                   </div>
 
-                  <h3>{vehicle.name}</h3>
-
-                  <p className="vehicle-description">
-                    {vehicle.description}
-                  </p>
-
-                  <div className="card-location">
-                    <span>📍</span>
-
-                    <span>
-                      {vehicle.pickupLocation}
-                    </span>
-                  </div>
-
-                  <div className="card-bottom">
-                    <div className="price">
-                      <strong>
-                        {vehicle.pricePerHour}
-                      </strong>
-
-                      <span>
-                        EGP / hour
+                  <div className="card-content">
+                    <div className="card-top">
+                      <span className="vehicle-type">
+                        {vehicle.type}
                       </span>
                     </div>
 
-                    <button
-                      className="details-button"
-                      onClick={() =>
-                        onSelectVehicle(vehicle)
-                      }
-                    >
-                      View Details →
-                    </button>
+                    <h3>{vehicle.name}</h3>
+
+                    <p className="vehicle-description">
+                      {vehicle.description || 'No description available.'}
+                    </p>
+
+                    <div className="card-location">
+                      <span>📍</span>
+                      <span>{vehicle.pickup_location}</span>
+                    </div>
+
+                    <div className="card-bottom">
+                      <div className="price">
+                        <strong>
+                          {Number(vehicle.price_per_hour).toLocaleString()}
+                        </strong>
+
+                        <span>EGP / hour</span>
+                      </div>
+
+                      <button
+                        className="details-button"
+                        onClick={() => onSelectVehicle({
+                          ...vehicle,
+                          pricePerHour: Number(vehicle.price_per_hour),
+                          pickupLocation: vehicle.pickup_location
+                        })}
+                      >
+                        View Details →
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
-          </div>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       </main>
 
       <footer>
         <div>
           <strong>CommunityRide</strong>
-          <span>
-            {' '}— Community Vehicle Rental Platform
-          </span>
+          <span> — Community Vehicle Rental Platform</span>
         </div>
 
         <span>© 2026 CommunityRide</span>

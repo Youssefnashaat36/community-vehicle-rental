@@ -7,9 +7,25 @@ use App\Models\Vehicle;
 
 class AdminVehicleController extends Controller
 {
-    // Approve a pending vehicle
-    public function approve(Vehicle $vehicle)
+    // Check if the authenticated user is an active admin
+    private function isActiveAdmin(Request $request)
     {
+        $user = $request->user();
+
+        return $user
+            && $user->role === 'admin'
+            && $user->status === 'active';
+    }
+
+    // Approve a pending vehicle
+    public function approve(Request $request, Vehicle $vehicle)
+    {
+        if (!$this->isActiveAdmin($request)) {
+            return response()->json([
+                'message' => 'Unauthorized. Only active admins can approve vehicles.',
+            ], 403);
+        }
+
         if ($vehicle->status !== 'pending_approval') {
             return response()->json([
                 'message' => 'Only pending vehicles can be approved.',
@@ -30,6 +46,12 @@ class AdminVehicleController extends Controller
     // Reject a pending vehicle
     public function reject(Request $request, Vehicle $vehicle)
     {
+        if (!$this->isActiveAdmin($request)) {
+            return response()->json([
+                'message' => 'Unauthorized. Only active admins can reject vehicles.',
+            ], 403);
+        }
+
         if ($vehicle->status !== 'pending_approval') {
             return response()->json([
                 'message' => 'Only pending vehicles can be rejected.',
@@ -52,8 +74,14 @@ class AdminVehicleController extends Controller
     }
 
     // Get all pending vehicles
-    public function pending()
+    public function pending(Request $request)
     {
+        if (!$this->isActiveAdmin($request)) {
+            return response()->json([
+                'message' => 'Unauthorized. Only active admins can view pending vehicles.',
+            ], 403);
+        }
+
         $vehicles = Vehicle::where('status', 'pending_approval')->get();
 
         return response()->json($vehicles);

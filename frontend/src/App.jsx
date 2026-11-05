@@ -1,3 +1,4 @@
+
 import { useState } from 'react'
 import './App.css'
 
@@ -5,11 +6,13 @@ import VehicleListPage from './pages/VehicleListPage'
 import VehicleDetailsPage from './pages/VehicleDetailsPage'
 import VehicleAvailabilityPage from './pages/VehicleAvailabilityPage'
 import BookingSummaryPage from './pages/BookingSummaryPage'
+import LoginPage from './pages/LoginPage'
 
 function App() {
   const [currentPage, setCurrentPage] = useState('vehicles')
   const [selectedVehicle, setSelectedVehicle] = useState(null)
   const [bookingData, setBookingData] = useState(null)
+  const [authUser, setAuthUser] = useState(null)
 
   const handleSelectVehicle = (vehicle) => {
     setSelectedVehicle(vehicle)
@@ -47,6 +50,21 @@ function App() {
     setCurrentPage('vehicles')
   }
 
+  const handleLoginSuccess = (user) => {
+    setAuthUser(user)
+    alert(`Welcome, ${user.name}!`)
+    setCurrentPage('vehicles')
+  }
+
+  if (currentPage === 'login') {
+    return (
+      <LoginPage
+        onBack={() => setCurrentPage('vehicles')}
+        onLoginSuccess={handleLoginSuccess}
+      />
+    )
+  }
+
   if (currentPage === 'details' && selectedVehicle) {
     return (
       <VehicleDetailsPage
@@ -67,11 +85,7 @@ function App() {
     )
   }
 
-  if (
-    currentPage === 'summary' &&
-    selectedVehicle &&
-    bookingData
-  ) {
+  if (currentPage === 'summary' && selectedVehicle && bookingData) {
     return (
       <BookingSummaryPage
         vehicle={selectedVehicle}
@@ -85,6 +99,8 @@ function App() {
   return (
     <VehicleListPage
       onSelectVehicle={handleSelectVehicle}
+      onLogin={() => setCurrentPage('login')}
+      authUser={authUser}
     />
   )
 }

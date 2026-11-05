@@ -13,10 +13,33 @@ class BookingController extends Controller
 {
     public function index(Request $request)
     {
+        $user = $request->user();
+
         $query = Booking::with(['customer', 'vehicle']);
 
-        if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
+        if ($user->role === 'customer') {
+            if ($user->status !== 'active') {
+                abort(403, 'Your account is not active.');
+            }
+
+            $query->where('customer_id', $user->id);
+
+        } elseif ($user->role === 'provider') {
+            if ($user->status !== 'active') {
+                abort(403, 'Your provider account is not active.');
+            }
+
+            $query->whereHas('vehicle', function ($vehicleQuery) use ($user) {
+                $vehicleQuery->where('provider_id', $user->id);
+            });
+
+        } elseif ($user->role === 'admin') {
+            if ($user->status !== 'active') {
+                abort(403, 'Your admin account is not active.');
+            }
+
+        } else {
+            abort(403, 'You are not authorized to view bookings.');
         }
 
         if ($request->filled('vehicle_id')) {
@@ -28,17 +51,21 @@ class BookingController extends Controller
 
     public function store(Request $request)
     {
+        $user = $request->user();
+
+        if ($user->role !== 'customer' || $user->status !== 'active') {
+            abort(403, 'Only active customers can create bookings.');
+        }
+
         $validated = $request->validate([
-            'customer_id' => 'required|exists:users,id',
             'vehicle_id' => 'required|exists:vehicles,id',
             'start_at' => 'required|date|after:now',
             'end_at' => 'required|date|after:start_at',
         ]);
 
-        $booking = DB::transaction(function () use ($validated) {
+        $booking = DB::transaction(function () use ($validated, $user) {
 
-            // Lock customer to prevent simultaneous booking limit bypass.
-            $customer = User::whereKey($validated['customer_id'])
+            $customer = User::whereKey($user->id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
@@ -115,7 +142,7 @@ class BookingController extends Controller
             // Check vehicle availability for every day in the period.
             $currentDay = $start->copy()->startOfDay();
 
-            while ($currentDay->lt($end)) {
+             while ($currentDay->lt($end)) {
                 $dayStart = $currentDay->copy()->max($start);
                 $dayEnd = $currentDay->copy()->addDay()->min($end);
                 $dayOfWeek = $currentDay->dayOfWeek;
@@ -153,31 +180,86 @@ class BookingController extends Controller
         );
     }
 
-    public function show(Booking $booking)
+    public function show(Request $request, Booking $booking)
     {
+        $user = $request->user();
+
+        if ($user->status !== 'active') {
+            abort(403, 'Your account is not active.');
+        }
+
+        if ($user->role === 'customer') {
+            if ((int) $booking->customer_id !== (int) $user->id) {
+                abort(403, 'You are not authorized to view this booking.');
+            }
+
+        } elseif ($user->role === 'provider') {
+            if ((int) $booking->vehicle->provider_id !== (int) $user->id) {
+                abort(403, 'You are not authorized to view this booking.');
+            }
+
+        } elseif ($user->role !== 'admin') {
+            abort(403, 'You are not authorized to view this booking.');
+        }
+
         return response()->json($booking->load(['customer', 'vehicle']));
     }
+public function update(Request $request, Booking $booking)
+{
+    $user = $request->user();
 
-    public function update(Request $request, Booking $booking)
-    {
-        $validated = $request->validate([
-            'status' => 'sometimes|required|in:pending,confirmed,active,completed,cancelled,expired',
-        ]);
-
-        $booking->update($validated);
-
-        return response()->json($booking->load(['customer', 'vehicle']));
+    if ($user->status !== 'active') {
+        abort(403, 'Your account is not active.');
     }
 
+    $validated = $request->validate([
+        'status' => 'required|in:pending,confirmed,active,completed,cancelled,expired',
+    ]);
+
+    $newStatus = $validated['status'];
+
+    if ($user->role === 'provider') {
+
+        if ((int) $booking->vehicle->provider_id !== (int) $user->id) {
+            abort(403, 'You are not authorized to update this booking.');
+        }
+
+        $allowedTransitions = [
+            'pending' => ['confirmed'],
+            'confirmed' => ['active'],
+            'active' => ['completed'],
+        ];
+
+        if (!in_array(
+            $newStatus,
+            $allowedTransitions[$booking->status] ?? []
+        )) {
+            abort(422, 'This booking status transition is not allowed.');
+        }
+
+    } elseif ($user->role !== 'admin') {
+        abort(403, 'You are not authorized to update bookings.');
+    }
+
+    $booking->update([
+        'status' => $newStatus,
+    ]);
+
+    return response()->json(
+        $booking->fresh()->load(['customer', 'vehicle'])
+    );
+}
     // BR-08: Customer can cancel Pending or Confirmed bookings
     // until 2 hours before the booking start time.
     public function destroy(Request $request, Booking $booking)
     {
-        $validated = $request->validate([
-            'customer_id' => 'required|exists:users,id',
-        ]);
+        $user = $request->user();
 
-        if ((int) $validated['customer_id'] !== (int) $booking->customer_id) {
+        if ($user->role !== 'customer' || $user->status !== 'active') {
+            abort(403, 'Only active customers can cancel bookings.');
+        }
+
+        if ((int) $booking->customer_id !== (int) $user->id) {
             abort(403, 'You can only cancel your own bookings.');
         }
 

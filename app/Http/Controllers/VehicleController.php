@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 
 class VehicleController extends Controller
 {
+    // Display all active vehicles
     public function index()
     {
         $vehicles = Vehicle::where('status', 'active')->get();
@@ -14,6 +15,7 @@ class VehicleController extends Controller
         return response()->json($vehicles);
     }
 
+    // Display a single active vehicle
     public function show(Vehicle $vehicle)
     {
         if ($vehicle->status !== 'active') {
@@ -25,10 +27,18 @@ class VehicleController extends Controller
         return response()->json($vehicle);
     }
 
+    // Add a new vehicle
     public function store(Request $request)
     {
+        $user = $request->user();
+
+        if ($user->role !== 'provider' || $user->status !== 'active') {
+            return response()->json([
+                'message' => 'Only active providers can add vehicles.',
+            ], 403);
+        }
+
         $validated = $request->validate([
-            'provider_id' => 'required|exists:users,id',
             'type' => 'required|in:bicycle,scooter,motorbike,car',
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -37,8 +47,7 @@ class VehicleController extends Controller
             'pickup_location' => 'required|string|max:255',
         ]);
 
-        $vehicle = Vehicle::create([
-            'provider_id' => $validated['provider_id'],
+        $vehicle = $user->vehicles()->create([
             'type' => $validated['type'],
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
@@ -48,6 +57,9 @@ class VehicleController extends Controller
             'status' => 'pending_approval',
         ]);
 
-        return response()->json($vehicle, 201);
+        return response()->json([
+            'message' => 'Vehicle submitted successfully and is waiting for admin approval.',
+            'vehicle' => $vehicle,
+        ], 201);
     }
 }
