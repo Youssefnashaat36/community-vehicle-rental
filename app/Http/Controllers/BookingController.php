@@ -142,7 +142,7 @@ class BookingController extends Controller
             // Check vehicle availability for every day in the period.
             $currentDay = $start->copy()->startOfDay();
 
-             while ($currentDay->lt($end)) {
+            while ($currentDay->lt($end)) {
                 $dayStart = $currentDay->copy()->max($start);
                 $dayEnd = $currentDay->copy()->addDay()->min($end);
                 $dayOfWeek = $currentDay->dayOfWeek;
@@ -204,51 +204,82 @@ class BookingController extends Controller
 
         return response()->json($booking->load(['customer', 'vehicle']));
     }
-public function update(Request $request, Booking $booking)
-{
-    $user = $request->user();
 
-    if ($user->status !== 'active') {
-        abort(403, 'Your account is not active.');
-    }
+    public function update(Request $request, Booking $booking)
+    {
+        $user = $request->user();
 
-    $validated = $request->validate([
-        'status' => 'required|in:pending,confirmed,active,completed,cancelled,expired',
-    ]);
-
-    $newStatus = $validated['status'];
-
-    if ($user->role === 'provider') {
-
-        if ((int) $booking->vehicle->provider_id !== (int) $user->id) {
-            abort(403, 'You are not authorized to update this booking.');
+        if ($user->status !== 'active') {
+            abort(403, 'Your account is not active.');
         }
 
-        $allowedTransitions = [
-            'pending' => ['confirmed'],
-            'confirmed' => ['active'],
-            'active' => ['completed'],
-        ];
+        $validated = $request->validate([
+            'status' => 'required|in:pending,confirmed,active,completed,cancelled,expired',
+        ]);
 
-        if (!in_array(
-            $newStatus,
-            $allowedTransitions[$booking->status] ?? []
-        )) {
-            abort(422, 'This booking status transition is not allowed.');
-        }
+        $newStatus = $validated['status'];
 
-    } elseif ($user->role !== 'admin') {
-        abort(403, 'You are not authorized to update bookings.');
+        $updatedBooking = DB::transaction(function () use (
+            $booking,
+            $user,
+            $newStatus
+        ) {
+            // Lock vehicle first to coordinate with new booking requests.
+            $vehicle = Vehicle::whereKey($booking->vehicle_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $lockedBooking = Booking::whereKey($booking->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($user->role === 'provider') {
+
+                if ((int) $vehicle->provider_id !== (int) $user->id) {
+                    abort(403, 'You are not authorized to update this booking.');
+                }
+
+                $allowedTransitions = [
+                    'pending' => ['confirmed'],
+                    'confirmed' => ['active'],
+                    'active' => ['completed'],
+                ];
+
+                if (!in_array(
+                    $newStatus,
+                    $allowedTransitions[$lockedBooking->status] ?? []
+                )) {
+                    abort(422, 'This booking status transition is not allowed.');
+                }
+
+            } elseif ($user->role !== 'admin') {
+                abort(403, 'You are not authorized to update bookings.');
+            }
+
+            $lockedBooking->update([
+                'status' => $newStatus,
+            ]);
+
+            // If the booking is now closed, check whether the vehicle
+            // can be soft deleted.
+            if (in_array($newStatus, ['completed', 'cancelled', 'expired'])) {
+                $this->deleteVehicleIfNoOpenBookings($vehicle);
+            }
+
+            return $lockedBooking;
+        });
+
+        $updatedBooking->refresh()->load('customer');
+
+        // Include the vehicle in the response even if it was soft deleted.
+        $updatedBooking->setRelation(
+            'vehicle',
+            Vehicle::withTrashed()->find($updatedBooking->vehicle_id)
+        );
+
+        return response()->json($updatedBooking);
     }
 
-    $booking->update([
-        'status' => $newStatus,
-    ]);
-
-    return response()->json(
-        $booking->fresh()->load(['customer', 'vehicle'])
-    );
-}
     // BR-08: Customer can cancel Pending or Confirmed bookings
     // until 2 hours before the booking start time.
     public function destroy(Request $request, Booking $booking)
@@ -259,27 +290,71 @@ public function update(Request $request, Booking $booking)
             abort(403, 'Only active customers can cancel bookings.');
         }
 
-        if ((int) $booking->customer_id !== (int) $user->id) {
-            abort(403, 'You can only cancel your own bookings.');
-        }
+        $cancelledBooking = DB::transaction(function () use ($booking, $user) {
 
-        if (!in_array($booking->status, ['pending', 'confirmed'])) {
-            abort(422, 'Only pending or confirmed bookings can be cancelled.');
-        }
+            // Lock vehicle first to coordinate with new booking requests.
+            $vehicle = Vehicle::whereKey($booking->vehicle_id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $cancellationDeadline = $booking->start_at->copy()->subHours(2);
+            $lockedBooking = Booking::whereKey($booking->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if (now()->gt($cancellationDeadline)) {
-            abort(422, 'Bookings can only be cancelled at least 2 hours before start time.');
-        }
+            if ((int) $lockedBooking->customer_id !== (int) $user->id) {
+                abort(403, 'You can only cancel your own bookings.');
+            }
 
-        $booking->update([
-            'status' => 'cancelled',
-        ]);
+            if (!in_array($lockedBooking->status, ['pending', 'confirmed'])) {
+                abort(422, 'Only pending or confirmed bookings can be cancelled.');
+            }
+
+            $cancellationDeadline = $lockedBooking->start_at->copy()->subHours(2);
+
+            if (now()->gt($cancellationDeadline)) {
+                abort(422, 'Bookings can only be cancelled at least 2 hours before start time.');
+            }
+
+            $lockedBooking->update([
+                'status' => 'cancelled',
+            ]);
+
+            // Check whether this was the last open booking.
+            $this->deleteVehicleIfNoOpenBookings($vehicle);
+
+            return $lockedBooking;
+        });
+
+        $cancelledBooking->refresh()->load('customer');
+
+        // Include the vehicle even if it was soft deleted.
+        $cancelledBooking->setRelation(
+            'vehicle',
+            Vehicle::withTrashed()->find($cancelledBooking->vehicle_id)
+        );
 
         return response()->json([
             'message' => 'Booking cancelled successfully.',
-            'booking' => $booking->fresh()->load(['customer', 'vehicle']),
+            'booking' => $cancelledBooking,
         ]);
+    }
+
+    /**
+     * Soft delete the vehicle after its last open booking is closed,
+     * but only if an admin has approved its deletion request.
+     */
+    private function deleteVehicleIfNoOpenBookings(Vehicle $vehicle)
+    {
+        if ($vehicle->deletion_status !== 'approved') {
+            return;
+        }
+
+        $hasOpenBookings = Booking::where('vehicle_id', $vehicle->id)
+            ->whereIn('status', ['pending', 'confirmed', 'active'])
+            ->exists();
+
+        if (!$hasOpenBookings) {
+            $vehicle->delete();
+        }
     }
 }

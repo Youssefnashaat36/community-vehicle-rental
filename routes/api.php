@@ -7,10 +7,18 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\AdminVehicleController;
+use App\Http\Controllers\VehicleDeletionRequestController;
 
+// ========================================
 // Authentication Routes
+// ========================================
+
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+
+// ========================================
+// Protected Routes
+// ========================================
 
 Route::middleware('auth:sanctum')->group(function () {
 
@@ -18,27 +26,52 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
 
-});
+    // ========================================
+    // Provider Vehicle Routes
+    // ========================================
 
-// Vehicle Routes
-Route::get('/vehicles', [VehicleController::class, 'index']);
-Route::get('/vehicles/{vehicle}', [VehicleController::class, 'show']);
-Route::post('/vehicles', [VehicleController::class, 'store'])
-    ->middleware('auth:sanctum');
+    // Get all vehicles owned by the logged-in provider
+    Route::get(
+        '/provider/vehicles',
+        [VehicleController::class, 'myVehicles']
+    );
 
-// Booking Routes
-Route::middleware('auth:sanctum')->group(function () {
+    // Submit vehicle deletion request
+    Route::post(
+        '/provider/vehicles/{vehicle}/deletion-request',
+        [VehicleDeletionRequestController::class, 'store']
+    );
 
-    Route::get('/bookings', [BookingController::class, 'index']);
-    Route::post('/bookings', [BookingController::class, 'store']);
-    Route::get('/bookings/{booking}', [BookingController::class, 'show']);
-    Route::put('/bookings/{booking}', [BookingController::class, 'update']);
-    Route::delete('/bookings/{booking}', [BookingController::class, 'destroy']);
+    // ========================================
+    // Admin Vehicle Deletion Requests
+    // ========================================
 
-});
+    Route::get(
+        '/admin/vehicle-deletion-requests',
+        [VehicleDeletionRequestController::class, 'index']
+    );
 
-// Admin Vehicle Routes
-Route::middleware('auth:sanctum')->group(function () {
+    Route::patch(
+        '/admin/vehicle-deletion-requests/{deletionRequest}/approve',
+        [VehicleDeletionRequestController::class, 'approve']
+    );
+
+    Route::patch(
+        '/admin/vehicle-deletion-requests/{deletionRequest}/reject',
+        [VehicleDeletionRequestController::class, 'reject']
+    );
+
+    // ========================================
+    // Vehicle Management
+    // ========================================
+
+    Route::post('/vehicles', [VehicleController::class, 'store']);
+
+    // Admin pending vehicles
+    Route::get(
+        '/admin/vehicles/pending',
+        [AdminVehicleController::class, 'pending']
+    );
 
     Route::patch(
         '/admin/vehicles/{vehicle}/approve',
@@ -50,9 +83,25 @@ Route::middleware('auth:sanctum')->group(function () {
         [AdminVehicleController::class, 'reject']
     );
 
-    Route::get(
-        '/admin/vehicles/pending',
-        [AdminVehicleController::class, 'pending']
-    );
+    // ========================================
+    // Booking Routes
+    // ========================================
 
+    Route::get('/bookings', [BookingController::class, 'index']);
+
+    Route::post('/bookings', [BookingController::class, 'store']);
+
+    Route::get('/bookings/{booking}', [BookingController::class, 'show']);
+
+    Route::put('/bookings/{booking}', [BookingController::class, 'update']);
+
+    Route::delete('/bookings/{booking}', [BookingController::class, 'destroy']);
 });
+
+// ========================================
+// Public Vehicle Routes
+// ========================================
+
+Route::get('/vehicles', [VehicleController::class, 'index']);
+
+Route::get('/vehicles/{vehicle}', [VehicleController::class, 'show']);

@@ -1,14 +1,33 @@
-
 import { useEffect, useState } from 'react'
 
-
-function VehicleListPage({ onSelectVehicle, onLogin, authUser }) {
+function VehicleListPage({
+  onSelectVehicle,
+  onLogin,
+  onAddVehicle,
+  onAdminDashboard,
+  authUser,
+}) {
   const [vehicles, setVehicles] = useState([])
+  const [myVehicles, setMyVehicles] = useState([])
   const [loading, setLoading] = useState(true)
+  const [myVehiclesLoading, setMyVehiclesLoading] = useState(false)
   const [error, setError] = useState('')
+  const [myVehiclesError, setMyVehiclesError] = useState('')
+  const [requestingId, setRequestingId] = useState(null)
+  const [requestMessage, setRequestMessage] = useState('')
   const [search, setSearch] = useState('')
   const [selectedType, setSelectedType] = useState('all')
 
+  const getHeaders = () => {
+    const token = localStorage.getItem('auth_token')
+
+    return {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    }
+  }
+
+  // Load public vehicles
   useEffect(() => {
     const fetchVehicles = async () => {
       try {
@@ -26,9 +45,7 @@ function VehicleListPage({ onSelectVehicle, onLogin, authUser }) {
         const data = await response.json()
         setVehicles(data)
       } catch (err) {
-        setError(
-          'Could not connect to the server. Please try again.'
-        )
+        setError('Could not connect to the server. Please try again.')
       } finally {
         setLoading(false)
       }
@@ -37,10 +54,100 @@ function VehicleListPage({ onSelectVehicle, onLogin, authUser }) {
     fetchVehicles()
   }, [])
 
+  // Load all vehicles owned by the logged-in provider
+  useEffect(() => {
+    if (authUser?.role !== 'provider') {
+      setMyVehicles([])
+      return
+    }
+
+    const fetchMyVehicles = async () => {
+      try {
+        setMyVehiclesLoading(true)
+        setMyVehiclesError('')
+
+        const response = await fetch(
+          'http://127.0.0.1:8000/api/provider/vehicles',
+          {
+            headers: getHeaders(),
+          }
+        )
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to load your vehicles.')
+        }
+
+        setMyVehicles(data)
+      } catch (err) {
+        setMyVehiclesError(err.message || 'Could not load your vehicles.')
+      } finally {
+        setMyVehiclesLoading(false)
+      }
+    }
+
+    fetchMyVehicles()
+  }, [authUser])
+
+  const handleRequestDeletion = async (vehicle) => {
+    const reason = window.prompt(
+      `Why do you want to delete "${vehicle.name}"?`
+    )
+
+    if (reason === null) return
+
+    if (!reason.trim()) {
+      alert('Please enter a reason for deletion.')
+      return
+    }
+
+    try {
+      setRequestingId(vehicle.id)
+      setRequestMessage('')
+
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/provider/vehicles/${vehicle.id}/deletion-request`,
+        {
+          method: 'POST',
+          headers: {
+            ...getHeaders(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            provider_reason: reason.trim(),
+          }),
+        }
+      )
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Could not submit deletion request.')
+      }
+
+      setMyVehicles((currentVehicles) =>
+        currentVehicles.map((item) =>
+          item.id === vehicle.id
+            ? { ...item, deletion_status: 'pending' }
+            : item
+        )
+      )
+
+      setRequestMessage(
+        `Deletion request for "${vehicle.name}" was submitted successfully.`
+      )
+    } catch (err) {
+      alert(err.message || 'Something went wrong.')
+    } finally {
+      setRequestingId(null)
+    }
+  }
+
   const filteredVehicles = vehicles.filter((vehicle) => {
     const matchesSearch =
-      vehicle.name.toLowerCase().includes(search.toLowerCase()) ||
-      vehicle.pickup_location.toLowerCase().includes(search.toLowerCase())
+      (vehicle.name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (vehicle.pickup_location || '').toLowerCase().includes(search.toLowerCase())
 
     const matchesType =
       selectedType === 'all' || vehicle.type === selectedType
@@ -63,6 +170,22 @@ function VehicleListPage({ onSelectVehicle, onLogin, authUser }) {
     }
   }
 
+  const getDeletionStatus = (vehicle) => {
+    if (vehicle.deletion_status === 'pending') {
+      return 'Deletion request pending'
+    }
+
+    if (vehicle.deletion_status === 'approved') {
+      return 'Deletion approved'
+    }
+
+    if (vehicle.deletion_status === 'rejected') {
+      return 'Deletion request rejected'
+    }
+
+    return 'No deletion request'
+  }
+
   return (
     <div className="app-shell">
       <nav className="navbar">
@@ -74,15 +197,111 @@ function VehicleListPage({ onSelectVehicle, onLogin, authUser }) {
         <div className="nav-links">
           <a href="#home">Home</a>
           <a href="#vehicles">Vehicles</a>
+          {authUser?.role === 'provider' && (
+            <a href="#my-vehicles">My Vehicles</a>
+          )}
           <a href="#bookings">My Bookings</a>
         </div>
 
+        {authUser?.role === 'provider' && (
+          <button className="details-button" onClick={onAddVehicle}>
+            + Add Vehicle
+          </button>
+        )}
+
+        {authUser?.role === 'admin' && (
+          <button className="details-button" onClick={onAdminDashboard}>
+            Admin Dashboard
+          </button>
+        )}
+
         <button className="login-button" onClick={onLogin}>
-  {authUser ? authUser.name : 'Login'}
-</button>
+          {authUser ? authUser.name : 'Login'}
+        </button>
       </nav>
 
       <main>
+        {authUser?.role === 'provider' && (
+          <section className="vehicles-section" id="my-vehicles">
+            <div className="section-heading">
+              <div>
+                <span className="section-label">PROVIDER DASHBOARD</span>
+                <h2>My Vehicles</h2>
+                <p>Manage your vehicles and deletion requests.</p>
+              </div>
+            </div>
+
+            {myVehiclesLoading && (
+              <p className="loading-message">Loading your vehicles...</p>
+            )}
+
+            {myVehiclesError && (
+              <p className="error-message">{myVehiclesError}</p>
+            )}
+
+            {requestMessage && (
+              <p className="success-message">{requestMessage}</p>
+            )}
+
+            {!myVehiclesLoading &&
+              !myVehiclesError &&
+              myVehicles.length === 0 && (
+                <p className="empty-message">
+                  You haven't added any vehicles yet.
+                </p>
+              )}
+
+            {!myVehiclesLoading && myVehicles.length > 0 && (
+              <div className="vehicle-grid">
+                {myVehicles.map((vehicle) => (
+                  <article className="vehicle-card" key={vehicle.id}>
+                    <div className={`card-image ${vehicle.type}`}>
+                      {vehicle.image ? (
+                        <img src={vehicle.image} alt={vehicle.name} />
+                      ) : (
+                        <span className="vehicle-emoji">
+                          {getVehicleEmoji(vehicle.type)}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="card-content">
+                      <span className="vehicle-type">{vehicle.type}</span>
+
+                      <h3>{vehicle.name}</h3>
+
+                      <p className="vehicle-description">
+                        {vehicle.description || 'No description available.'}
+                      </p>
+
+                      <p>
+                        Vehicle status: <strong>{vehicle.status}</strong>
+                      </p>
+
+                      <p>
+                        {getDeletionStatus(vehicle)}
+                      </p>
+
+                      {vehicle.deletion_status !== 'pending' &&
+                        vehicle.deletion_status !== 'approved' && (
+                          <button
+                            className="details-button"
+                            disabled={requestingId === vehicle.id}
+                            onClick={() => handleRequestDeletion(vehicle)}
+                          >
+                            {requestingId === vehicle.id
+                              ? 'Sending Request...'
+                              : 'Request Deletion'}
+                          </button>
+                        )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
         <section className="hero-section" id="home">
           <div className="hero-badge">
             🚘 Community Vehicle Rental
@@ -108,11 +327,13 @@ function VehicleListPage({ onSelectVehicle, onLogin, authUser }) {
               onChange={(e) => setSearch(e.target.value)}
             />
 
-            <button onClick={() => {
-              document.getElementById('vehicles')?.scrollIntoView({
-                behavior: 'smooth'
-              })
-            }}>
+            <button
+              onClick={() => {
+                document.getElementById('vehicles')?.scrollIntoView({
+                  behavior: 'smooth',
+                })
+              }}
+            >
               Search
             </button>
           </div>
@@ -138,86 +359,47 @@ function VehicleListPage({ onSelectVehicle, onLogin, authUser }) {
         <section className="vehicles-section" id="vehicles">
           <div className="section-heading">
             <div>
-              <span className="section-label">
-                EXPLORE OUR VEHICLES
-              </span>
-
+              <span className="section-label">EXPLORE OUR VEHICLES</span>
               <h2>Choose your ride</h2>
-
-              <p>
-                Find a vehicle that fits your needs and budget.
-              </p>
+              <p>Find a vehicle that fits your needs and budget.</p>
             </div>
           </div>
 
           <div className="filter-tabs">
-            <button
-              className={selectedType === 'all' ? 'active' : ''}
-              onClick={() => setSelectedType('all')}
-            >
-              All
-            </button>
-
-            <button
-              className={selectedType === 'car' ? 'active' : ''}
-              onClick={() => setSelectedType('car')}
-            >
-              🚗 Cars
-            </button>
-
-            <button
-              className={selectedType === 'scooter' ? 'active' : ''}
-              onClick={() => setSelectedType('scooter')}
-            >
-              🛴 Scooters
-            </button>
-
-            <button
-              className={selectedType === 'motorbike' ? 'active' : ''}
-              onClick={() => setSelectedType('motorbike')}
-            >
-              🏍️ Motorbikes
-            </button>
-
-            <button
-              className={selectedType === 'bicycle' ? 'active' : ''}
-              onClick={() => setSelectedType('bicycle')}
-            >
-              🚲 Bicycles
-            </button>
+            {[
+              ['all', 'All'],
+              ['car', '🚗 Cars'],
+              ['scooter', '🛴 Scooters'],
+              ['motorbike', '🏍️ Motorbikes'],
+              ['bicycle', '🚲 Bicycles'],
+            ].map(([type, label]) => (
+              <button
+                key={type}
+                className={selectedType === type ? 'active' : ''}
+                onClick={() => setSelectedType(type)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
           {loading && (
-            <p className="loading-message">
-              Loading vehicles...
-            </p>
+            <p className="loading-message">Loading vehicles...</p>
           )}
 
-          {error && (
-            <p className="error-message">
-              {error}
-            </p>
-          )}
+          {error && <p className="error-message">{error}</p>}
 
           {!loading && !error && filteredVehicles.length === 0 && (
-            <p className="empty-message">
-              No vehicles found.
-            </p>
+            <p className="empty-message">No vehicles found.</p>
           )}
 
           {!loading && !error && (
             <div className="vehicle-grid">
               {filteredVehicles.map((vehicle) => (
-                <article
-                  className="vehicle-card"
-                  key={vehicle.id}
-                >
+                <article className="vehicle-card" key={vehicle.id}>
                   <div className={`card-image ${vehicle.type}`}>
                     {vehicle.image ? (
-                      <img
-                        src={vehicle.image}
-                        alt={vehicle.name}
-                      />
+                      <img src={vehicle.image} alt={vehicle.name} />
                     ) : (
                       <span className="vehicle-emoji">
                         {getVehicleEmoji(vehicle.type)}
@@ -227,9 +409,7 @@ function VehicleListPage({ onSelectVehicle, onLogin, authUser }) {
 
                   <div className="card-content">
                     <div className="card-top">
-                      <span className="vehicle-type">
-                        {vehicle.type}
-                      </span>
+                      <span className="vehicle-type">{vehicle.type}</span>
                     </div>
 
                     <h3>{vehicle.name}</h3>
@@ -248,17 +428,18 @@ function VehicleListPage({ onSelectVehicle, onLogin, authUser }) {
                         <strong>
                           {Number(vehicle.price_per_hour).toLocaleString()}
                         </strong>
-
                         <span>EGP / hour</span>
                       </div>
 
                       <button
                         className="details-button"
-                        onClick={() => onSelectVehicle({
-                          ...vehicle,
-                          pricePerHour: Number(vehicle.price_per_hour),
-                          pickupLocation: vehicle.pickup_location
-                        })}
+                        onClick={() =>
+                          onSelectVehicle({
+                            ...vehicle,
+                            pricePerHour: Number(vehicle.price_per_hour),
+                            pickupLocation: vehicle.pickup_location,
+                          })
+                        }
                       >
                         View Details →
                       </button>

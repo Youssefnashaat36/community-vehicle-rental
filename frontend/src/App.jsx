@@ -7,6 +7,8 @@ import VehicleDetailsPage from './pages/VehicleDetailsPage'
 import VehicleAvailabilityPage from './pages/VehicleAvailabilityPage'
 import BookingSummaryPage from './pages/BookingSummaryPage'
 import LoginPage from './pages/LoginPage'
+import AddVehiclePage from './pages/AddVehiclePage'
+import AdminDashboardPage from './pages/AdminDashboardPage'
 
 function App() {
   const [currentPage, setCurrentPage] = useState('vehicles')
@@ -44,7 +46,6 @@ function App() {
 
   const handleConfirmBooking = () => {
     alert('Booking confirmed successfully!')
-
     setBookingData(null)
     setSelectedVehicle(null)
     setCurrentPage('vehicles')
@@ -56,11 +57,32 @@ function App() {
     setCurrentPage('vehicles')
   }
 
+  const handleAddVehicleSuccess = () => {
+    setCurrentPage('vehicles')
+  }
+
   if (currentPage === 'login') {
     return (
       <LoginPage
         onBack={() => setCurrentPage('vehicles')}
         onLoginSuccess={handleLoginSuccess}
+      />
+    )
+  }
+
+  if (currentPage === 'addVehicle') {
+    return (
+      <AddVehiclePage
+        onBack={handleBackToVehicles}
+        onSuccess={handleAddVehicleSuccess}
+      />
+    )
+  }
+
+  if (currentPage === 'adminDashboard') {
+    return (
+      <AdminDashboardPage
+        onBack={handleBackToVehicles}
       />
     )
   }
@@ -100,6 +122,8 @@ function App() {
     <VehicleListPage
       onSelectVehicle={handleSelectVehicle}
       onLogin={() => setCurrentPage('login')}
+      onAddVehicle={() => setCurrentPage('addVehicle')}
+      onAdminDashboard={() => setCurrentPage('adminDashboard')}
       authUser={authUser}
     />
   )
