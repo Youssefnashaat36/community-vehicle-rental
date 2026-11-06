@@ -1,108 +1,42 @@
-
-import { useState } from 'react'
-import './App.css'
-
+import { useEffect, useState } from 'react'
+import HomePage from './pages/HomePage'
 import VehicleListPage from './pages/VehicleListPage'
+import LoginPage from './pages/LoginPage'
+import BookingSummaryPage from './pages/BookingSummaryPage'
 import VehicleDetailsPage from './pages/VehicleDetailsPage'
 import VehicleAvailabilityPage from './pages/VehicleAvailabilityPage'
-import BookingSummaryPage from './pages/BookingSummaryPage'
-import LoginPage from './pages/LoginPage'
+
+const readHash = () => window.location.hash.replace('#', '') || 'home'
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('vehicles')
-  const [selectedVehicle, setSelectedVehicle] = useState(null)
-  const [bookingData, setBookingData] = useState(null)
+  const [page, setPage] = useState(readHash)
   const [authUser, setAuthUser] = useState(null)
+  const [selectedVehicle, setSelectedVehicle] = useState(null)
 
-  const handleSelectVehicle = (vehicle) => {
-    setSelectedVehicle(vehicle)
-    setCurrentPage('details')
+  useEffect(() => {
+    const onHash = () => setPage(readHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
+  const go = (p) => { window.location.hash = p === 'home' ? '' : p }
+  const logout = () => { setAuthUser(null); go('home') }
+
+  switch (page) {
+    case 'vehicles':
+      return <VehicleListPage authUser={authUser} onLogin={() => go('login')}
+        onSelectVehicle={(v) => { setSelectedVehicle(v); go('details') }} />
+    case 'login':
+      return <LoginPage onLoginSuccess={(u) => { setAuthUser(u); go('vehicles') }} />
+    case 'bookings':
+      return <BookingSummaryPage authUser={authUser} />
+    case 'details':
+      return <VehicleDetailsPage vehicle={selectedVehicle} />
+    case 'availability':
+      return <VehicleAvailabilityPage vehicle={selectedVehicle} />
+    default:
+      return <HomePage onNavigate={go} authUser={authUser} onLogout={logout} />
   }
-
-  const handleCheckAvailability = () => {
-    setCurrentPage('availability')
-  }
-
-  const handleAvailabilityContinue = (data) => {
-    setBookingData(data)
-    setCurrentPage('summary')
-  }
-
-  const handleBackToVehicles = () => {
-    setSelectedVehicle(null)
-    setBookingData(null)
-    setCurrentPage('vehicles')
-  }
-
-  const handleBackToDetails = () => {
-    setCurrentPage('details')
-  }
-
-  const handleBackToAvailability = () => {
-    setCurrentPage('availability')
-  }
-
-  const handleConfirmBooking = () => {
-    alert('Booking confirmed successfully!')
-
-    setBookingData(null)
-    setSelectedVehicle(null)
-    setCurrentPage('vehicles')
-  }
-
-  const handleLoginSuccess = (user) => {
-    setAuthUser(user)
-    alert(`Welcome, ${user.name}!`)
-    setCurrentPage('vehicles')
-  }
-
-  if (currentPage === 'login') {
-    return (
-      <LoginPage
-        onBack={() => setCurrentPage('vehicles')}
-        onLoginSuccess={handleLoginSuccess}
-      />
-    )
-  }
-
-  if (currentPage === 'details' && selectedVehicle) {
-    return (
-      <VehicleDetailsPage
-        vehicle={selectedVehicle}
-        onBack={handleBackToVehicles}
-        onCheckAvailability={handleCheckAvailability}
-      />
-    )
-  }
-
-  if (currentPage === 'availability' && selectedVehicle) {
-    return (
-      <VehicleAvailabilityPage
-        vehicle={selectedVehicle}
-        onBack={handleBackToDetails}
-        onContinue={handleAvailabilityContinue}
-      />
-    )
-  }
-
-  if (currentPage === 'summary' && selectedVehicle && bookingData) {
-    return (
-      <BookingSummaryPage
-        vehicle={selectedVehicle}
-        booking={bookingData}
-        onBack={handleBackToAvailability}
-        onConfirm={handleConfirmBooking}
-      />
-    )
-  }
-
-  return (
-    <VehicleListPage
-      onSelectVehicle={handleSelectVehicle}
-      onLogin={() => setCurrentPage('login')}
-      authUser={authUser}
-    />
-  )
 }
 
 export default App

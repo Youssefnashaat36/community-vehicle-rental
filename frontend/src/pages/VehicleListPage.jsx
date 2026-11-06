@@ -15,9 +15,8 @@ function VehicleListPage({ onSelectVehicle, onLogin, authUser }) {
         setLoading(true)
         setError('')
 
-        const response = await fetch(
-          'http://127.0.0.1:8000/api/vehicles'
-        )
+        const API = import.meta.env.VITE_API_URL
+        const response = await fetch(`${API}/vehicles`)
 
         if (!response.ok) {
           throw new Error('Failed to load vehicles.')
