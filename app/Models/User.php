@@ -36,7 +36,15 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+public function vehicleDeletionRequests()
+{
+    return $this->hasMany(VehicleDeletionRequest::class, 'provider_id');
+}
 
+public function reviewedVehicleDeletionRequests()
+{
+    return $this->hasMany(VehicleDeletionRequest::class, 'reviewed_by');
+}
     public function vehicles()
     {
         return $this->hasMany(Vehicle::class, 'provider_id');

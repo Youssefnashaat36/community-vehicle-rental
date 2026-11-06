@@ -7,18 +7,26 @@ use Illuminate\Http\Request;
 
 class VehicleController extends Controller
 {
-    // Display all active vehicles
+    // Display all active vehicles that are not pending deletion.
     public function index()
     {
-        $vehicles = Vehicle::where('status', 'active')->get();
+        $vehicles = Vehicle::where('status', 'active')
+            ->where(function ($query) {
+                $query->whereNull('deletion_status')
+                    ->orWhereNotIn('deletion_status', ['pending', 'approved']);
+            })
+            ->get();
 
         return response()->json($vehicles);
     }
 
-    // Display a single active vehicle
+    // Display a single active vehicle that is not pending deletion.
     public function show(Vehicle $vehicle)
     {
-        if ($vehicle->status !== 'active') {
+        if (
+            $vehicle->status !== 'active' ||
+            in_array($vehicle->deletion_status, ['pending', 'approved'])
+        ) {
             return response()->json([
                 'message' => 'Vehicle is not available for browsing.',
             ], 404);
@@ -27,7 +35,7 @@ class VehicleController extends Controller
         return response()->json($vehicle);
     }
 
-    // Add a new vehicle
+    // Add a new vehicle.
     public function store(Request $request)
     {
         $user = $request->user();

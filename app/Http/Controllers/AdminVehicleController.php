@@ -7,7 +7,7 @@ use App\Models\Vehicle;
 
 class AdminVehicleController extends Controller
 {
-    // Check if the authenticated user is an active admin
+    // Check if the authenticated user is an active admin.
     private function isActiveAdmin(Request $request)
     {
         $user = $request->user();
@@ -17,7 +17,7 @@ class AdminVehicleController extends Controller
             && $user->status === 'active';
     }
 
-    // Approve a pending vehicle
+    // Approve a pending vehicle.
     public function approve(Request $request, Vehicle $vehicle)
     {
         if (!$this->isActiveAdmin($request)) {
@@ -43,7 +43,7 @@ class AdminVehicleController extends Controller
         ]);
     }
 
-    // Reject a pending vehicle
+    // Reject a pending vehicle.
     public function reject(Request $request, Vehicle $vehicle)
     {
         if (!$this->isActiveAdmin($request)) {
@@ -73,7 +73,7 @@ class AdminVehicleController extends Controller
         ]);
     }
 
-    // Get all pending vehicles
+    // Get all pending vehicles.
     public function pending(Request $request)
     {
         if (!$this->isActiveAdmin($request)) {
